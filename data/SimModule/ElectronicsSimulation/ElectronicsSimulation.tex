@@ -1,0 +1,149 @@
+\graphicspath{{data/SimModule/ElectronicsSimualtion/}}
+
+\chapter[Electronics Simulation]
+{Electronics Simulation}
+\section{Usage}
+\texttt{JPSim} runs Electronics Simulation default. Electronics Simulation can be shut down using parameters \texttt{-e ElectronicsSwitch}.
+\begin{lstlisting}[language=bash]
+$ JPSim [-e (OFF/ON)] [-dn nDarkNoise[0/1/2/n]]
+\end{lstlisting}
+\begin{itemize}
+    \item {\tt ElectronicsSwitch} or \texttt{-e} and this parameter needs be set mandatory.
+    \item {\tt nDarkNoise} default is 1(defined in JPSimTrigger.cc). PreTriggerNoDarkNoise,PreTrigger, PreTriggerFullDarkNoiseFast, PreTriggerFullDarkNoise
+    \item 
+\end{itemize}
+\section{ElecModule Code Structure}
+Code files of Electronics Simulation is stored in \texttt{\$JASP\_install/Simulation/ElecModule}. The Structure of above directory is shown in Figure~\ref{fig:elecstructure}.
+\begin{figure}[htbp]
+    \dirtree{%
+    .1 ElecModule/.
+    .2 include/.
+    .3 JPSimDarkNoise.hh.
+    .3 JPSimElecTrigSim.hh.
+    .3 JPSimElectronics.hh.
+    .3 JPSimPMT.hh.
+    .3 JPSimPMTManager.hh.
+    .3 JPSimPreTrigger.hh.
+    .3 JPSimTrigger.hh.
+    .3 VDarkNoise.hh.
+    .3 VElecTrigSim.hh.
+    .3 VElectronics.hh.
+    .3 VPreTrigger.hh.
+    .3 VTrigger.hh.
+    .2 src/.
+    .3 JPSimDarkNoise.cc.
+    .3 JPSimElectronics.cc.
+    .3 JPSimPMT.cc.
+    .3 JPSimPMTManager.cc.
+    .3 JPSimPreTrigger.cc.
+    .3 JPSimTrigger.cc.
+    }
+    \caption{{\tt ElectronicsSimulation} directory structure}
+    \label{fig:elecstructure}
+\end{figure}
+\subsection{Brief Introduction to important files}
+\begin{description}
+    \item[JPSimPMT<.hh/.cc>] Class \texttt{JPSimPMT} set and return parameters of PMTs, 
+    which will be set when JSAP initialize Detector geometry implemented by code in \texttt{JPSimDetectorConstruction.cc}.
+    \texttt{JPSimPMT} contains many parameters, such as the position, electronics property. It use a charge model to describe
+    the gain process of electrons. The charge model obey distribution of Poisson.
+    % charge model
+    \[P(0, \mu)*w*\alpha*e^{-\alpha x}\]
+    The noise model is gauss distribution$N(0, rms)$.
+    \item[VElecTrigSim.hh] Virtual Class \texttt{VElectrigSim}
+    \item[JPSimDarkNoise<.hh/.cc>]  Class \texttt{DarkNoise}
+    \item[JPSimElecTrigSim.hh]\label{JPSimElecTrigSim} \texttt{JPSimElecTrigSim.hh} defines template class \texttt{JPSimElecTrigSim} inherited from class \texttt{VElectrigSim}.
+    \begin{lstlisting}[language=C++]
+    template<class PreTrigger, class DarkNoise,
+             class Electronics, class Trigger>
+    class JPSimElecTrigSim : public VElecTrigSim
+    \end{lstlisting}
+    Class \texttt{JPSimElecTrigSim} is used as the combination of the above four classes and storage the objects of four classes in each event simulation. In code realization, class JPSimElecTrigSim
+    is construct in construction of event simulation in file \texttt{JPSimEventAction.cc}. 
+    \begin{lstlisting}[language=C++]
+    // JPSimEventAction.cc: JPSimEventAction::JPSimEventAction
+    ets = new JPSimElecTrigSim<JPSimPreTrigger, JPSimDarkNoise,
+     JPSimElectronics, JPSimTrigger>();
+    \end{lstlisting}
+    \item[JPSimPreTrigger<.hh/.cc>] Class \texttt{JPSimPreTrigger} return \texttt{PreTriggers} using information of global PETime(use the computer time as start of time), not the simulated waveform.
+    PreTrigger operation accurates the speed of simulation. There are 4 method can be choosed
+    in JPSimPreTrigger, which are described following:
+    \begin{enumerate}
+        \item \texttt{PreTriggerNoDarkNoise()} Only find the intervals with hits, no dark noise added.
+        \item \texttt{PreTrigger()} Only find the intervals with hits, add dark noise and pass them into hitListIntvl
+        \item \texttt{PreTriggerFullDarkNoiseFast()} Generate dark noise of the whole segment to pre-trigger the dark noise accidental trigger. Very slow.
+        \item \texttt{PreTriggerFullDarkNoise()}
+    \end{enumerate}
+    %segmentBegin and segmentEnd:
+    %deltat0+detlat1<0 jisimhit<
+
+    Dark Noise Rate is also a parameter of pmt. The Dark Noise distribution obeys Poisson distribution.
+
+    Use nTriggerCondition to check the pmt number in interval is whether more than nTriggerCondition.
+    \item[JPSimElectronics<.hh/.cc>] Class \texttt{JPSimElectronics} generates waveform according to the parameters of pmt, including charge model, basline noise, DC offset and single photon response(SPE).
+    \[waveform=charge\otimes spe+rms+DCoffset\]
+    After generate above waveform, \texttt{JPSimElectronics} simulate the process of ADC which change the volatage to ADC address.
+    
+    \item[JPSimTrigger<.hh/.cc>] Class \texttt{JPSimTrigger} gives formal triggers used to extract readout waveforms.
+    \texttt{JPSimTrigger<.hh/.cc>} simulates the process of pulse amplitude discriminator to get logic signal. 
+    When the waveform(negative signal) less than the threshold, generate a rectangle logic signal with
+    a time width of CoincidenceWindow(default value is 50ns). If the sum of logic signal exceeds nTriggerCondition, a trigger will be
+    recorded. After all the triggers generated, readout and triggerinfo will be output.
+\end{description}
+
+\subsection{related Classes or code files}
+\begin{description}
+    \item[G4Module/src/JPSimEventAction.cc] Class \texttt{JPSimEventAction} defines the start of Electronics Simulation, PreTrigger in function \texttt{EndOfEventAction}.
+    This class is the entrance of the electronics simlation. The initialization, processing and storage of Electronics Simulation are all done in this part.
+
+    In above section~\ref{JPSimElecTrigSim}, the initialization code of \texttt{JPSimElecTrigSim} is illustrated. The entrance of Electronics Simulation is implement in function \texttt{JPSimEventAction::EndOfEventAction}.
+    This function save TruthInfo first, which is the result of detector simulation. After the storage process of TruthInfo finished, Electronics Simulation starts and save TriggerInfo.
+    \begin{lstlisting}[language=C++]
+        // JPSimEventAction.cc:L394
+        ets->GetPreTriggerPtr()->PreTriggerNoDarkNoise(
+            JPSimPMTManager::GetInstance()->HitListMap, 
+            JPSimPMTManager::GetInstance()->TempHitBuffer, 
+            hitListIntvl, nEventNo);
+    \end{lstlisting}
+    \texttt{JPSimEventAction} also control the whole process of Electronic Simulation, include PreTrigger, Electronics, Trigger.
+    
+    \begin{lstlisting}[language=C++]
+        // JPSimEventAction.cc:L422
+        ets->GetElectronicsPtr()->Shape(hitItem.first, 
+                hitItem.second, WaveformList, HitListMap);
+        // JPSimEventAction.cc:L428
+        ets->GetTriggerPtr()->Trigger(hitItem.first, HitListMap, 
+                WaveformList, TriggerInfoList, fTrackContainer, 
+                TrackMap, fTruthList);
+    \end{lstlisting}
+    \item[G4Module/src/JPSimTrackingAction.cc] Class \texttt{JPSimTrackingAction} simulates the transportation of electrons in PMT.
+    It get the time of each photon hit on the Cathode(HitTime). Then it add the TTS according to different PMTs.
+    \item[DataIOModule/src/JPSimDataOutput.cc] This file defined the format of output tree, such as readout and triggerinfo.
+    \item[DataIOModule/src/JPSimGDMLReader.cc] Class \texttt{JPSimGDMLReader} is called by Class \texttt{JPSimPMT}, and return property
+    of PMT read from GDML files.
+    \item[DetectorStructure/] Storage detector structure, include PMT positon and type.
+    \item[PMTCalib/] Storage the property of different types of PMT.
+\end{description}
+\section{Data Flow}
+\subsection{PMT property}
+GDML files are read by GDML Reader. It parse GDML into different value and set properties of PMT.
+\begin{lstlisting}[language=c++]
+    // JPSimDetectorConstruction.cc:L
+    JPSimTrigger::fCoincidenceWindow = fParser->GetConstant("Coincidence_Window")*ns;
+    JPSimTrigger::fThreshold = fParser->GetConstant("Threshold");
+    JPSimTrigger::nTriggerCondition = fParser->GetConstant("Trigger_Condition");
+    JPSimTrigger::fTimeWindow = fParser->GetConstant("Time_Window")*ns;
+    JPSimTrigger::fTriggerPosition = fParser->GetConstant("Trigger_Position")*ns;
+    JPSimTrigger::fDynamicRange = fParser->GetConstant("ADC_DynamicRange");
+    JPSimTrigger::nBit = fParser->GetConstant("ADC_Bit");
+    JPSimTrigger::fDCOffset = fParser->GetConstant("ADC_DCOffset");
+    JPSimTrigger::nBits = TMath::Power(2, JPSimTrigger::nBit);
+    JPSimTrigger::nThreshold = (UInt_t)TMath::Abs((JPSimTrigger::fThreshold+JPSimTrigger::fDCOffset*1000+1000*JPSimTrigger::fDynamicRange)/(JPSimTrigger::fDynamicRange*1000/JPSimTrigger::nBits));
+\end{lstlisting}
+\subsection{Electronics Simulation in Detector Simulation}
+\subsection{PreTrigger}
+\subsection{Electronics}
+\subsubsection{charge model}
+\subsection{Trigger}
+
+\section{Appendix}
